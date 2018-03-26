@@ -120,8 +120,10 @@ void resampler(char *in_file, char *out_file) {
         free(data_in);
         free(data_out);
     }
-  if(data_in) free(data_in);
-  if(data_out) free(data_out);
+    else{
+	    if(data_in) free(data_in);
+  		if(data_out) free(data_out);
+    }
 }
 
 int main(int argc, char *argv[]) {
