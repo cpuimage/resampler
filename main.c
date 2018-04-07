@@ -10,7 +10,9 @@ extern "C" {
 #include <stdint.h>
 //采用https://github.com/mackron/dr_libs/blob/master/dr_wav.h 解码
 #define DR_WAV_IMPLEMENTATION
+
 #include "dr_wav.h"
+
 void resampler(char *in_file, char *out_file);
 
 //写wav文件
@@ -31,6 +33,7 @@ void wavWrite_int16(char *filename, int16_t *buffer, int sampleRate, uint32_t to
         }
     }
 }
+
 //读取wav文件
 int16_t *wavRead_int16(char *filename, uint32_t *sampleRate, uint64_t *totalSampleCount) {
     unsigned int channels;
@@ -108,32 +111,33 @@ void resampleData(const int16_t *sourceData, int32_t sampleRate, uint32_t srcSiz
 
 void resampler(char *in_file, char *out_file) {
     //音频采样率
-    uint32_t sampleRate = 0;
+    uint32_t in_sampleRate = 0;
     //总音频采样数
     uint64_t totalSampleCount = 0;
-    int16_t *data_in = wavRead_int16(in_file, &sampleRate, &totalSampleCount);
-    int16_t *data_out = (int16_t *) malloc(totalSampleCount * 2 * sizeof(int16_t));
+    int16_t *data_in = wavRead_int16(in_file, &in_sampleRate, &totalSampleCount);
+    uint32_t out_sampleRate = in_sampleRate * 2;
+    uint32_t out_size = (uint32_t) (totalSampleCount * ((float) out_sampleRate / in_sampleRate));
+    int16_t *data_out = (int16_t *) malloc(out_size * sizeof(int16_t));
     //如果加载成功
     if (data_in != NULL && data_out != NULL) {
-        resampleData(data_in, sampleRate, (uint32_t) totalSampleCount, data_out, sampleRate * 2);
-        wavWrite_int16(out_file, data_out,sampleRate * 2, (uint32_t) totalSampleCount * 2);
+        resampleData(data_in, in_sampleRate, (uint32_t) totalSampleCount, data_out, out_sampleRate);
+        wavWrite_int16(out_file, data_out, out_sampleRate, (uint32_t) out_size);
         free(data_in);
         free(data_out);
-    }
-    else{
-	    if(data_in) free(data_in);
-  		if(data_out) free(data_out);
+    } else {
+        if (data_in) free(data_in);
+        if (data_out) free(data_out);
     }
 }
 
 int main(int argc, char *argv[]) {
-	printf("Audio Processing\n");
-	printf("博客:http://tntmonks.cnblogs.com/\n");
-	printf("音频插值重采样\n");
-     if (argc < 2)
-         return -1;
-         
-    char *in_file =  argv[1];
+    printf("Audio Processing\n");
+    printf("博客:http://tntmonks.cnblogs.com/\n");
+    printf("音频插值重采样\n");
+    if (argc < 2)
+        return -1;
+
+    char *in_file = argv[1];
     char drive[3];
     char dir[256];
     char fname[256];
