@@ -1,5 +1,5 @@
 # resampler
-A Simple and Efficient Resampler Implementation in C.
+A Simple and Efficient Audio Resampler Implementation in C.
 
 Example
 =======
