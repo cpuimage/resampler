@@ -2,25 +2,23 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
 #define  _CRT_SECURE_NO_WARNINGS
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-//采用https://github.com/mackron/dr_libs/blob/master/dr_wav.h 解码
+//ref: https://github.com/mackron/dr_libs/blob/master/dr_wav.h
 #define DR_WAV_IMPLEMENTATION
 
+#include "timing.h"
 #include "dr_wav.h"
 
-void resampler(char *in_file, char *out_file);
 
-//写wav文件
-void wavWrite_int16(char *filename, int16_t *buffer, int sampleRate, uint32_t totalSampleCount) {
+void wavWrite_int16(char *filename, int16_t *buffer, int sampleRate, uint32_t totalSampleCount, uint32_t channels) {
     drwav_data_format format;
     format.container = drwav_container_riff;     // <-- drwav_container_riff = normal WAV files, drwav_container_w64 = Sony Wave64.
     format.format = DR_WAVE_FORMAT_PCM;          // <-- Any of the DR_WAVE_FORMAT_* codes.
-    format.channels = 1;
+    format.channels = channels;
     format.sampleRate = (drwav_uint32) sampleRate;
     format.bitsPerSample = 16;
     drwav *pWav = drwav_open_file_write(filename, &format);
@@ -28,30 +26,22 @@ void wavWrite_int16(char *filename, int16_t *buffer, int sampleRate, uint32_t to
         drwav_uint64 samplesWritten = drwav_write(pWav, totalSampleCount, buffer);
         drwav_uninit(pWav);
         if (samplesWritten != totalSampleCount) {
-            fprintf(stderr, "ERROR\n");
+            fprintf(stderr, "write file error.\n");
             exit(1);
         }
     }
 }
 
-//读取wav文件
-int16_t *wavRead_int16(char *filename, uint32_t *sampleRate, uint64_t *totalSampleCount) {
-    unsigned int channels;
-    int16_t *buffer = drwav_open_and_read_file_s16(filename, &channels, sampleRate, totalSampleCount);
+int16_t *wavRead_int16(char *filename, uint32_t *sampleRate, uint64_t *totalSampleCount, uint32_t *channels) {
+    int16_t *buffer = drwav_open_and_read_file_s16(filename, channels, sampleRate, totalSampleCount);
     if (buffer == NULL) {
-        printf("读取wav文件失败.");
-    }
-    //仅仅处理单通道音频
-    if (channels != 1) {
-        drwav_free(buffer);
-        buffer = NULL;
-        *sampleRate = 0;
-        *totalSampleCount = 0;
+        fprintf(stderr, "read file error.\n");
+        exit(1);
     }
     return buffer;
 }
 
-//分割路径函数
+
 void splitpath(const char *path, char *drv, char *dir, char *name, char *ext) {
     const char *end;
     const char *p;
@@ -91,49 +81,144 @@ void splitpath(const char *path, char *drv, char *dir, char *name, char *ext) {
     }
 }
 
-void resampleData(const int16_t *sourceData, int32_t sampleRate, uint32_t srcSize, int16_t *destinationData,
-                  int32_t newSampleRate) {
-    if (sampleRate == newSampleRate) {
-        memcpy(destinationData, sourceData, srcSize * sizeof(int16_t));
+//easy f32 version
+void simple_resample_f32(const float *input, float *output, uint32_t in_frames, int32_t out_frames, int channels) {
+    if (in_frames == out_frames) {
+        memcpy(output, input, in_frames * sizeof(float));
         return;
     }
-    uint32_t last_pos = srcSize - 1;
-    uint32_t dstSize = (uint32_t) (srcSize * ((float) newSampleRate / sampleRate));
-    for (uint32_t idx = 0; idx < dstSize; idx++) {
-        float index = ((float) idx * sampleRate) / (newSampleRate);
-        uint32_t p1 = (uint32_t) index;
-        float coef = index - p1;
+    float pos = 0;
+    uint32_t last_pos = in_frames - 1;
+    float scale = (float) (1.0 * in_frames) / out_frames;
+    for (uint32_t idx = 0; idx < out_frames; idx++) {
+        uint32_t p1 = (uint32_t) pos;
+        float coef = pos - p1;
         uint32_t p2 = (p1 == last_pos) ? last_pos : p1 + 1;
-        destinationData[idx] = (int16_t) ((1.0f - coef) * sourceData[p1] + coef * sourceData[p2]);
+        for (int c = 0; c < channels; c++) {
+            output[idx * channels + c] = (float) ((1.0f - coef) * input[p1 * channels + c] +
+                                                  coef * input[p2 * channels + c]);
+        }
+        pos += scale;
+    }
+}
+
+//easy s16 version
+void simple_resample_s16(const int16_t *input, int16_t *output, uint32_t in_frames, int32_t out_frames, int channels) {
+    if (in_frames == out_frames) {
+        memcpy(output, input, in_frames * sizeof(int16_t));
+        return;
+    }
+    float pos = 0;
+    uint32_t last_pos = in_frames - 1;
+    float scale = (float) (1.0 * in_frames) / out_frames;
+    for (uint32_t idx = 0; idx < out_frames; idx++) {
+        uint32_t p1 = (uint32_t) pos;
+        float coef = pos - p1;
+        uint32_t p2 = (p1 == last_pos) ? last_pos : p1 + 1;
+        for (int c = 0; c < channels; c++) {
+            output[idx * channels + c] = (int16_t) ((1.0f - coef) * input[p1 * channels + c] +
+                                                    coef * input[p2 * channels + c]);
+        }
+        pos += scale;
+    }
+}
+
+//poly f32 version
+void poly_resample_f32(const float *input, float *output, int in_frames, int out_frames, int channels) {
+    float scale = (float) (1.0 * in_frames) / out_frames;
+    int head = (int) (1.0f / scale);
+    float pos = 0;
+    for (int i = 0; i < head; i++) {
+        for (int c = 0; c < channels; c++) {
+            float sample_1 = input[0 + c];
+            float sample_2 = input[channels + c];
+            float sample_3 = input[(channels << 1) + c];
+            float poly_3 = sample_1 + sample_3 - sample_2 * 2;
+            float poly_2 = sample_2 * 4 - (sample_1 * 3) - sample_3;
+            float poly_1 = sample_1;
+            output[i * channels + c] = (poly_3 * pos * pos + poly_2 * pos) * 0.5f + poly_1;
+        }
+        pos += scale;
+    }
+    float in_pos = head * scale;
+    for (int n = head; n < out_frames; n++) {
+        int npos = (int) in_pos;
+        pos = in_pos - npos + 1;
+        for (int c = 0; c < channels; c++) {
+            float sample_1 = input[(npos - 1) * channels + c];
+            float sample_2 = input[(npos + 0) * channels + c];
+            float sample_3 = input[(npos + 1) * channels + c];
+            float poly_3 = sample_1 + sample_3 - sample_2 * 2;
+            float poly_2 = sample_2 * 4 - (sample_1 * 3) - sample_3;
+            float poly_1 = sample_1;
+            output[n * channels + c] = (poly_3 * pos * pos + poly_2 * pos) * 0.5f + poly_1;
+        }
+        in_pos += scale;
+    }
+}
+
+//poly s16 version
+void poly_resample_s16(const int16_t *input, int16_t *output, int in_frames, int out_frames, int channels) {
+    float scale = (float) (1.0 * in_frames) / out_frames;
+    int head = (int) (1.0f / scale);
+    float pos = 0;
+    for (int i = 0; i < head; i++) {
+        for (int c = 0; c < channels; c++) {
+            int sample_1 = input[0 + c];
+            int sample_2 = input[channels + c];
+            int sample_3 = input[(channels << 1) + c];
+            int poly_3 = sample_1 + sample_3 - (sample_2 << 1);
+            int poly_2 = (sample_2 << 2) + sample_1 - (sample_1 << 2) - sample_3;
+            int poly_1 = sample_1;
+            output[i * channels + c] = (int16_t) ((poly_3 * pos * pos + poly_2 * pos) * 0.5f + poly_1);
+        }
+        pos += scale;
+    }
+    float in_pos = head * scale;
+    for (int n = head; n < out_frames; n++) {
+        int npos = (int) in_pos;
+        pos = in_pos - npos + 1;
+        for (int c = 0; c < channels; c++) {
+            int sample_1 = input[(npos - 1) * channels + c];
+            int sample_2 = input[(npos + 0) * channels + c];
+            int sample_3 = input[(npos + 1) * channels + c];
+            int poly_3 = sample_1 + sample_3 - (sample_2 << 1);
+            int poly_2 = (sample_2 << 2) + sample_1 - (sample_1 << 2) - sample_3;
+            int poly_1 = sample_1;
+            output[n * channels + c] = (int16_t) ((poly_3 * pos * pos + poly_2 * pos) * 0.5f + poly_1);
+        }
+        in_pos += scale;
     }
 }
 
 
-void resampler(char *in_file, char *out_file) {
-    //音频采样率
+void resampler(char *in_file, char *out_file, uint32_t out_sampleRate) {
     uint32_t in_sampleRate = 0;
-    //总音频采样数
     uint64_t totalSampleCount = 0;
-    int16_t *data_in = wavRead_int16(in_file, &in_sampleRate, &totalSampleCount);
-    uint32_t out_sampleRate = in_sampleRate * 2;
+    uint32_t channels = 0;
+    int16_t *data_in = wavRead_int16(in_file, &in_sampleRate, &totalSampleCount, &channels);
     uint32_t out_size = (uint32_t) (totalSampleCount * ((float) out_sampleRate / in_sampleRate));
-    int16_t *data_out = (int16_t *) malloc(out_size * sizeof(int16_t));
-    //如果加载成功
-    if (data_in != NULL && data_out != NULL) {
-        resampleData(data_in, in_sampleRate, (uint32_t) totalSampleCount, data_out, out_sampleRate);
-        wavWrite_int16(out_file, data_out, out_sampleRate, (uint32_t) out_size);
+    if (data_in) {
+        int in_frames = totalSampleCount / channels;
+        int out_frames = out_size / channels;
+        int16_t *data_out = (int16_t *) malloc(out_size * sizeof(int16_t));
+        if (data_out) {
+            double startTime = now();
+            simple_resample_s16(data_in, data_out, in_frames, out_frames, channels);
+            poly_resample_s16(data_in, data_out, in_frames, out_frames, channels);
+            double time_interval = calcElapsed(startTime, now());
+            printf("time interval: %f ms\n ", (time_interval * 1000));
+            wavWrite_int16(out_file, data_out, out_sampleRate, (uint32_t) out_size, channels);
+            free(data_out);
+        }
         free(data_in);
-        free(data_out);
-    } else {
-        if (data_in) free(data_in);
-        if (data_out) free(data_out);
     }
 }
 
 int main(int argc, char *argv[]) {
     printf("Audio Processing\n");
-    printf("博客:http://cpuimage.cnblogs.com/\n");
-    printf("音频插值重采样\n");
+    printf("blog:http://cpuimage.cnblogs.com/\n");
+    printf("Audio Resampler\n");
     if (argc < 2)
         return -1;
 
@@ -145,9 +230,10 @@ int main(int argc, char *argv[]) {
     char out_file[1024];
     splitpath(in_file, drive, dir, fname, ext);
     sprintf(out_file, "%s%s%s_out%s", drive, dir, fname, ext);
-    resampler(in_file, out_file);
+    uint32_t out_sampleRate = 48000;
+    resampler(in_file, out_file, out_sampleRate);
+    printf("press any key to exit.\n");
     getchar();
-    printf("按任意键退出程序 \n");
     return 0;
 }
 
