@@ -1,6 +1,9 @@
-cmake_minimum_required(VERSION 3.9)
-project(resampler)
+cmake_minimum_required(VERSION 2.8)
+project(resampler LANGUAGES C)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+SET(CMAKE_BUILD_TYPE "Release")
 
-set(CMAKE_CXX_STANDARD 11)
-
+include_directories(include)
 add_executable(resampler main.c)
+
+target_link_libraries(resampler -lm)

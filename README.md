@@ -5,25 +5,75 @@ Example
 =======
 
 ```C
-void resampler(char *in_file, char *out_file, uint32_t out_sampleRate) {
-    uint32_t in_sampleRate = 0;
-    uint64_t totalSampleCount = 0;
-    uint32_t channels = 0;
-    int16_t *data_in = wavRead_int16(in_file, &in_sampleRate, &totalSampleCount, &channels);
-    uint32_t out_size = (uint32_t) (totalSampleCount * ((float) out_sampleRate / in_sampleRate));
-    if (data_in) {
-        int in_frames = totalSampleCount / channels;
-        int out_frames = out_size / channels;
-        int16_t *data_out = (int16_t *) malloc(out_size * sizeof(int16_t));
-        if (data_out) {
-        //  simple version
-            simple_resample_s16(data_in, data_out, in_frames, out_frames, channels);
-        //  poly version
-        //  poly_resample_s16(data_in, data_out, in_frames, out_frames, channels);
-            wavWrite_int16(out_file, data_out, out_sampleRate, (uint32_t) out_size, channels);
-            free(data_out);
+uint64_t Resample_f32(const float *input, float *output, int inSampleRate, int outSampleRate, uint64_t inputSize,
+                      uint32_t channels
+) {
+    if (input == NULL)
+        return 0;
+    uint64_t outputSize = inputSize * outSampleRate / inSampleRate;
+    if (output == NULL)
+        return outputSize;
+    double stepDist = ((double) inSampleRate / (double) outSampleRate);
+    const uint64_t fixedFraction = (1LL << 32);
+    const double normFixed = (1.0 / (1LL << 32));
+    uint64_t step = ((uint64_t) (stepDist * fixedFraction + 0.5));
+    uint64_t curOffset = 0;
+    for (uint32_t i = 0; i < outputSize; i += 1) {
+        for (uint32_t c = 0; c < channels; c += 1) {
+            *output++ = (float) (input[c] + (input[c + channels] - input[c]) * (
+                    (double) (curOffset >> 32) + ((curOffset & (fixedFraction - 1)) * normFixed)
+            )
+            );
         }
-        free(data_in);
+        curOffset += step;
+        input += (curOffset >> 32) * channels;
+        curOffset &= (fixedFraction - 1);
     }
+    return outputSize;
+}
+
+
+uint64_t Resample_s16(const int16_t *input, int16_t *output, int inSampleRate, int outSampleRate, uint64_t inputSize,
+                      uint32_t channels
+) {
+    if (input == NULL)
+        return 0;
+    uint64_t outputSize = inputSize * outSampleRate / inSampleRate;
+    if (output == NULL)
+        return outputSize;
+    double stepDist = ((double) inSampleRate / (double) outSampleRate);
+    const uint64_t fixedFraction = (1LL << 32);
+    const double normFixed = (1.0 / (1LL << 32));
+    uint64_t step = ((uint64_t) (stepDist * fixedFraction + 0.5));
+    uint64_t curOffset = 0;
+    for (uint32_t i = 0; i < outputSize; i += 1) {
+        for (uint32_t c = 0; c < channels; c += 1) {
+            *output++ = (int16_t) (input[c] + (input[c + channels] - input[c]) * (
+                    (double) (curOffset >> 32) + ((curOffset & (fixedFraction - 1)) * normFixed)
+            )
+            );
+        }
+        curOffset += step;
+        input += (curOffset >> 32) * channels;
+        curOffset &= (fixedFraction - 1);
+    }
+    return outputSize;
 }
 ```
+
+
+
+# Donate
+
+If the project is useful to you, and you like it, you can buy me a beer.
+===========================================================
+ 
+### Alipay donate
+![Scan QRCode donate me via Alipay](https://img2018.cnblogs.com/blog/824862/201809/824862-20180930223557236-1709972421.png)
+
+**Scan QRCode donate me via Alipay**
+ 
+### WeChat donate
+![Scan QRCode donate me via WeChat](https://img2018.cnblogs.com/blog/824862/201809/824862-20180930223603138-1708589189.png)
+
+**Scan QRCode donate me via WeChat**
