@@ -10,7 +10,7 @@ uint64_t Resample_f32(const float *input, float *output, int inSampleRate, int o
 ) {
     if (input == NULL)
         return 0;
-    uint64_t outputSize = inputSize * outSampleRate / inSampleRate;
+    uint64_t outputSize = (uint64_t) (inputSize * (double) outSampleRate / (double) inSampleRate);
     if (output == NULL)
         return outputSize;
     double stepDist = ((double) inSampleRate / (double) outSampleRate);
@@ -38,7 +38,7 @@ uint64_t Resample_s16(const int16_t *input, int16_t *output, int inSampleRate, i
 ) {
     if (input == NULL)
         return 0;
-    uint64_t outputSize = inputSize * outSampleRate / inSampleRate;
+    uint64_t outputSize = (uint64_t) (inputSize * (double) outSampleRate / (double) inSampleRate);
     if (output == NULL)
         return outputSize;
     double stepDist = ((double) inSampleRate / (double) outSampleRate);
@@ -63,8 +63,9 @@ uint64_t Resample_s16(const int16_t *input, int16_t *output, int inSampleRate, i
 
 
 
+
 # Donating
 
 If you found this project useful, consider buying me a coffee
 
-<a href="https://www.buymeacoffee.com/gaozhihan" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/black_img.png" alt="Buy Me A Coffee" style="height: auto !important;width: auto !important;" ></a>
+<a href="https://www.buymeacoffee.com/gaozhihan" target="_blank"><img src="https://img2018.cnblogs.com/blog/824862/201809/824862-20180930223603138-1708589189.png" alt="Buy Me A Coffee" style="height: auto !important;width: auto !important;" ></a>

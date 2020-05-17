@@ -103,7 +103,7 @@ uint64_t Resample_f32(const float *input, float *output, int inSampleRate, int o
 ) {
     if (input == NULL)
         return 0;
-    uint64_t outputSize = inputSize * outSampleRate / inSampleRate;
+    uint64_t outputSize = (uint64_t) (inputSize * (double) outSampleRate / (double) inSampleRate);
     if (output == NULL)
         return outputSize;
     double stepDist = ((double) inSampleRate / (double) outSampleRate);
@@ -131,7 +131,7 @@ uint64_t Resample_s16(const int16_t *input, int16_t *output, int inSampleRate, i
 ) {
     if (input == NULL)
         return 0;
-    uint64_t outputSize = inputSize * outSampleRate / inSampleRate;
+    uint64_t outputSize = (uint64_t) (inputSize * (double) outSampleRate / (double) inSampleRate);
     if (output == NULL)
         return outputSize;
     double stepDist = ((double) inSampleRate / (double) outSampleRate);
@@ -173,7 +173,7 @@ void resampler(char *in_file, char *out_file, uint32_t targetSampleRate) {
     uint64_t sampleCount = 0;
     uint32_t channels = 0;
     float *input = wavRead_f32(in_file, &sampleRate, &sampleCount, &channels);
-    uint64_t targetSampleCount = Resample_f32(input, 0, sampleRate, targetSampleRate, sampleCount, channels);
+    uint64_t targetSampleCount = Resample_f32(input, NULL, sampleRate, targetSampleRate, sampleCount, channels);
     if (input) {
         float *output = (float *) malloc(targetSampleCount * sizeof(float));
         if (output) {
@@ -203,7 +203,7 @@ int main(int argc, char *argv[]) {
         uint32_t targetSampleRate = (uint32_t) atoi(argv[3]);
         resampler(in_file, out_file, targetSampleRate);
     } else {
-        int32_t targetSampleRate = (uint32_t) atoi(argv[2]);
+        uint32_t targetSampleRate = (uint32_t) atoi(argv[2]);
         char drive[3];
         char dir[256];
         char fname[256];
