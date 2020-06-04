@@ -104,6 +104,7 @@ uint64_t Resample_f32(const float *input, float *output, int inSampleRate, int o
     if (input == NULL)
         return 0;
     uint64_t outputSize = (uint64_t) (inputSize * (double) outSampleRate / (double) inSampleRate);
+    outputSize -= outputSize % channels;
     if (output == NULL)
         return outputSize;
     double stepDist = ((double) inSampleRate / (double) outSampleRate);
@@ -132,6 +133,7 @@ uint64_t Resample_s16(const int16_t *input, int16_t *output, int inSampleRate, i
     if (input == NULL)
         return 0;
     uint64_t outputSize = (uint64_t) (inputSize * (double) outSampleRate / (double) inSampleRate);
+    outputSize -= outputSize % channels;
     if (output == NULL)
         return outputSize;
     double stepDist = ((double) inSampleRate / (double) outSampleRate);
