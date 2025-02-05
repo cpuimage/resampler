@@ -105,6 +105,7 @@ uint64_t Resample_f32(const float *input, float *output, int inSampleRate, int o
         return 0;
     uint64_t outputSize = (uint64_t) (inputSize * (double) outSampleRate / (double) inSampleRate);
     outputSize -= outputSize % channels;
+    outputSize -= outputSize % 2;
     if (output == NULL)
         return outputSize;
     double stepDist = ((double) inSampleRate / (double) outSampleRate);
